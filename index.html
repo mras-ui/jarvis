@@ -210,6 +210,13 @@
     html += '<div class="note">Рабочие ≈ ' + money(d.accounts_total.working_eur) + " · подушка ≈ " + money(d.accounts_total.reserve_eur) +
       " · всего ≈ " + money(d.accounts_total.working_eur + d.accounts_total.reserve_eur) + "</div>";
 
+    if (d.regular && d.regular.rows.length) {
+      var rg = d.regular;
+      html += "<h2>Регулярные траты</h2><div class=\"list\">" + rg.rows.map(function (r) {
+        return '<div class="row"><span class="n">' + esc(r.path) + '<span class="sub">сейчас: ' + money(r.current_eur) + '</span></span><span class="a">' + money(r.avg_eur) + "</span></div>";
+      }).join("") + "</div>";
+      html += '<div class="note">Минимум в месяц ≈ ' + money(rg.avg_total) + " (среднее за 3 прошлых месяца, без МБ) · в этом месяце уже " + money(rg.current_total) + "</div>";
+    }
     if (d.debts.length) {
       html += "<h2>Долги</h2><div class=\"list\">" + d.debts.map(function (x) {
         var text = x.balance > 0 ? x.person + " должен(на) нам" : "Мы должны " + x.person;
