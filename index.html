@@ -194,13 +194,15 @@
       '<div class="card"><div class="k">Инвестиции</div><div class="v">' + money(t.investments_eur) + "</div></div></div>";
 
     html += '<h2>Кошельки</h2><div class="list">' +
-      '<div class="row"><span class="n">Общий<span class="sub">из них Витины: ' + money(w.viktor_eur) + '</span></span><span class="a">' + signed(w.common_eur) + "</span></div>" +
-      '<div class="row"><span class="n">Марина</span><span class="a">' + signed(w.marina_eur) + "</span></div>" +
+      '<div class="row"><span class="n">Общий</span><span class="a">' + signed(w.common_eur) + "</span></div>" +
       '<div class="row"><span class="n">МБ</span><span class="a">' + signed(w.business_eur) + "</span></div></div>";
     if (w.missing_openings && w.missing_openings.length) {
-      html += '<div class="warn">Не заданы стартовые остатки кошельков: ' + w.missing_openings.map(function (s) { return SCOPE[s]; }).join(", ") +
+      html += '<div class="warn">Не задан стартовый остаток кошелька: ' + w.missing_openings.map(function (s) { return s === "business" ? "МБ" : "Общий"; }).join(", ") +
         ". Команда боту: «кошелёк Общий 5000 евро».</div>";
     }
+    var sp = d.expense_by_scope || {};
+    html += '<div class="note">Расход за месяц по владельцам: общие ' + money(sp.shared || 0) + " · Витя " + money(sp.viktor || 0) +
+      " · Марина " + money(sp.marina || 0) + " · МБ " + money(sp.business || 0) + "</div>";
 
     html += "<h2>Расходы по категориям</h2>" + categoriesHtml(d);
 
