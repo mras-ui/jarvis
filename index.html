@@ -147,9 +147,9 @@
       });
   }
 
-  // --- вкладка «Дела» (только у Марины: остальным API отвечает 403, и вкладок нет) ---
-  var PROJECT = { jarvis: "JARVIS", gymapp: "GYMAPP" };
-  var WHO = { marina: "ты", claude: "Claude", together: "вместе" };
+  // --- вкладка «Дела»: у каждого свой список (если API ответит 403 — вкладок нет, только бюджет) ---
+  var PROJECT = { security: "Безопасность", jarvis: "JARVIS", gymapp: "GYMAPP" };
+  var WHO = { marina: "Марина", viktor: "Витя", claude: "Claude", together: "вместе" };
 
   function api(query, opts) {
     opts = opts || {};
@@ -185,7 +185,7 @@
   function taskHtml(t) {
     var done = t.status === "done";
     var meta = [];
-    meta.push(t.who === "marina" ? '<span class="badge mine">ты</span>' : '<span class="badge">' + WHO[t.who] + "</span>");
+    meta.push(t.who === state.person ? '<span class="badge mine">ты</span>' : '<span class="badge">' + WHO[t.who] + "</span>");
     if (t.area) meta.push(esc(t.area));
     if (t.due) meta.push("к " + dueText(t.due));
     if (t.waiting_for && !done) meta.push((t.status === "waiting" ? "ждёт: " : "") + esc(t.waiting_for));
@@ -203,9 +203,9 @@
 
   function renderTasks() {
     var all = state.tasks || [];
-    var mineNow = all.filter(function (t) { return t.status === "now" && t.who === "marina"; }).length;
+    var mineNow = all.filter(function (t) { return t.status === "now" && t.who === state.person; }).length;
     var html = '<div class="note" style="margin-top:0">Твоих дел сейчас: ' + mineNow + "</div>";
-    ["jarvis", "gymapp"].forEach(function (p) {
+    Object.keys(PROJECT).forEach(function (p) {
       var list = all.filter(function (t) { return t.project === p; });
       if (!list.length) return;
       var by = function (s) { return list.filter(function (t) { return t.status === s; }).sort(byDue); };
@@ -219,7 +219,7 @@
 
   function loadTasks() {
     app.innerHTML = '<div class="msg">Загружаю…</div>';
-    return api("?view=tasks").then(function (d) { state.tasks = d.tasks; if (state.tab === "tasks") renderTasks(); });
+    return api("?view=tasks").then(function (d) { state.tasks = d.tasks; state.person = d.person; if (state.tab === "tasks") renderTasks(); });
   }
 
   function toggleTask(btn) {
