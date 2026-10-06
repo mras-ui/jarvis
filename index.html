@@ -69,10 +69,26 @@
   .msg { text-align: center; color: var(--hint); padding: 48px 12px; }
   .warn { background: rgba(214, 69, 69, .12); color: var(--neg); border-radius: 10px; padding: 8px 12px; font-size: 13px; margin-top: 10px; }
   .hidden { display: none; }
+  .tabs { margin-bottom: 12px; }
+  .task { display: flex; align-items: flex-start; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .task:last-child { border-bottom: 0; }
+  .task .n { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+  .chk { flex: none; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%; border: 2px solid var(--hint); background: transparent; color: var(--accent-text); font-size: 13px; line-height: 18px; padding: 0; }
+  .chk.on { background: var(--accent); border-color: var(--accent); }
+  .chk:disabled { opacity: .5; }
+  .task.done .n { color: var(--hint); text-decoration: line-through; }
+  .mine { background: var(--accent); color: var(--accent-text); }
+  .sub a { color: var(--accent); }
+  .grp { color: var(--hint); font-size: 12px; font-weight: 600; padding: 10px 0 2px; }
+  details.fold { border: 0; }
+  details.fold > summary { color: var(--hint); font-size: 13px; padding: 9px 0; }
+  details.fold > summary::before { content: "›"; display: inline-block; width: 14px; transition: transform .15s; }
+  details.fold[open] > summary::before { transform: rotate(90deg); }
 </style>
 </head>
 <body>
 <main>
+  <div id="tabs"></div>
   <div id="app"><div class="msg">Загружаю…</div></div>
 </main>
 
@@ -90,8 +106,9 @@
   }
 
   var now = new Date();
-  var state = { month: now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0"), scope: "nomb" };
+  var state = { month: now.getFullYear() + "-" + String(now.getMonth() + 1).padStart(2, "0"), scope: "nomb", tab: "tasks", tasks: null };
   var app = document.getElementById("app");
+  var tabs = document.getElementById("tabs");
 
   var eur = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "EUR", maximumFractionDigits: 0 });
   var eur2 = new Intl.NumberFormat("ru-RU", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
@@ -128,6 +145,103 @@
       .catch(function (e) {
         message(e.message === "access" ? "Нет доступа. Откройте дашборд заново из бота." : "Не получилось загрузить данные. Попробуйте ещё раз.");
       });
+  }
+
+  // --- вкладка «Дела» (только у Марины: остальным API отвечает 403, и вкладок нет) ---
+  var PROJECT = { jarvis: "JARVIS", gymapp: "GYMAPP" };
+  var WHO = { marina: "ты", claude: "Claude", together: "вместе" };
+
+  function api(query, opts) {
+    opts = opts || {};
+    opts.headers = Object.assign({ "x-telegram-init-data": initData() }, opts.headers || {});
+    return fetch(API + query, opts).then(function (r) {
+      if (r.status === 401) throw new Error("access");
+      if (r.status === 403) throw new Error("forbidden");
+      if (!r.ok) throw new Error("http " + r.status);
+      return r.json();
+    });
+  }
+
+  function renderTabs() {
+    tabs.innerHTML = '<div class="seg tabs">' + [["tasks", "Дела"], ["budget", "Бюджет"]].map(function (t) {
+      return '<button data-tab="' + t[0] + '" class="' + (state.tab === t[0] ? "on" : "") + '">' + t[1] + "</button>";
+    }).join("") + "</div>";
+  }
+
+  function dueText(d) {
+    var p = d.split("-");
+    return p[2] + "." + p[1];
+  }
+
+  function linkify(text) {
+    return esc(text).replace(/https:\/\/[^\s<]+/g, function (u) { return '<a href="' + u + '" data-link="' + u + '">ссылка</a>'; });
+  }
+
+  function byDue(a, b) {
+    if (a.due !== b.due) return !a.due ? 1 : !b.due ? -1 : a.due < b.due ? -1 : 1;
+    return a.sort - b.sort;
+  }
+
+  function taskHtml(t) {
+    var done = t.status === "done";
+    var meta = [];
+    meta.push(t.who === "marina" ? '<span class="badge mine">ты</span>' : '<span class="badge">' + WHO[t.who] + "</span>");
+    if (t.area) meta.push(esc(t.area));
+    if (t.due) meta.push("к " + dueText(t.due));
+    if (t.waiting_for && !done) meta.push((t.status === "waiting" ? "ждёт: " : "") + esc(t.waiting_for));
+    return '<div class="task' + (done ? " done" : "") + '"><button class="chk' + (done ? " on" : "") + '" data-task="' + esc(t.id) +
+      '" aria-label="' + (done ? "Вернуть в работу" : "Отметить сделанным") + '">' + (done ? "✓" : "") + '</button><span class="n">' + esc(t.title) +
+      (t.note ? '<span class="sub">' + linkify(t.note) + "</span>" : "") + '<span class="sub">' + meta.join(" · ") + "</span></span></div>";
+  }
+
+  function taskGroup(title, list, folded) {
+    if (!list.length) return "";
+    var body = list.map(taskHtml).join("");
+    if (folded) return '<details class="fold"><summary>' + title + " · " + list.length + "</summary>" + body + "</details>";
+    return '<div class="grp">' + title + "</div>" + body;
+  }
+
+  function renderTasks() {
+    var all = state.tasks || [];
+    var mineNow = all.filter(function (t) { return t.status === "now" && t.who === "marina"; }).length;
+    var html = '<div class="note" style="margin-top:0">Твоих дел сейчас: ' + mineNow + "</div>";
+    ["jarvis", "gymapp"].forEach(function (p) {
+      var list = all.filter(function (t) { return t.project === p; });
+      if (!list.length) return;
+      var by = function (s) { return list.filter(function (t) { return t.status === s; }).sort(byDue); };
+      html += "<h2>" + PROJECT[p] + '</h2><div class="list">' +
+        taskGroup("Сейчас", by("now"), false) + taskGroup("Ждёт", by("waiting"), false) +
+        taskGroup("Потом", by("later"), true) + taskGroup("Сделано за неделю", by("done"), true) + "</div>";
+    });
+    if (!all.length) html += '<div class="list"><div class="row"><span class="n sub">Дел нет</span></div></div>';
+    app.innerHTML = html;
+  }
+
+  function loadTasks() {
+    app.innerHTML = '<div class="msg">Загружаю…</div>';
+    return api("?view=tasks").then(function (d) { state.tasks = d.tasks; if (state.tab === "tasks") renderTasks(); });
+  }
+
+  function toggleTask(btn) {
+    var id = btn.dataset.task;
+    var t = (state.tasks || []).filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+    btn.disabled = true;
+    api("?view=tasks", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: id, done: t.status !== "done" }) })
+      .then(function (d) {
+        state.tasks = state.tasks.map(function (x) { return x.id === id ? d.task : x; });
+        renderTasks();
+      })
+      .catch(function () { btn.disabled = false; if (tg && tg.showAlert) tg.showAlert("Не получилось сохранить. Попробуйте ещё раз."); });
+  }
+
+  function start() {
+    if (!initData()) { message("Откройте дашборд из бота в Telegram — кнопка «📊 Дашборд»."); return; }
+    loadTasks().then(renderTabs).catch(function (e) {
+      if (e.message === "forbidden") { state.tab = "budget"; load(); return; }
+      renderTabs();
+      message(e.message === "access" ? "Нет доступа. Откройте дашборд заново из бота." : "Не получилось загрузить дела. Попробуйте ещё раз.");
+    });
   }
 
   function categoriesHtml(d) {
@@ -179,6 +293,7 @@
   }
 
   function render(d) {
+    if (state.tab !== "budget") return;
     var t = d.totals, w = d.wallets;
     var html = "";
     html += '<div class="bar"><button class="nav" data-m="-1" aria-label="Предыдущий месяц">‹</button><div class="month">' + esc(monthTitle(d.month)) +
@@ -236,13 +351,29 @@
   }
 
   app.addEventListener("click", function (e) {
+    var a = e.target.closest("a[data-link]");
+    if (a) {
+      e.preventDefault();
+      if (tg && tg.openLink) tg.openLink(a.dataset.link); else window.open(a.dataset.link, "_blank", "noopener");
+      return;
+    }
     var el = e.target.closest("button");
     if (!el) return;
-    if (el.dataset.m) { state.month = shiftMonth(state.month, +el.dataset.m); load(); }
+    if (el.dataset.task) toggleTask(el);
+    else if (el.dataset.m) { state.month = shiftMonth(state.month, +el.dataset.m); load(); }
     else if (el.dataset.s) { state.scope = el.dataset.s; load(); }
   });
 
-  load();
+  tabs.addEventListener("click", function (e) {
+    var el = e.target.closest("button");
+    if (!el || !el.dataset.tab || el.dataset.tab === state.tab) return;
+    state.tab = el.dataset.tab;
+    renderTabs();
+    if (state.tab === "tasks") loadTasks().catch(function () { message("Не получилось загрузить дела. Попробуйте ещё раз."); });
+    else load();
+  });
+
+  start();
 })();
 </script>
 </body>
