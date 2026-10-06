@@ -79,6 +79,9 @@
   .task.done .n { color: var(--hint); text-decoration: line-through; }
   .mine { background: var(--accent); color: var(--accent-text); }
   .sub a { color: var(--accent); }
+  .area { margin-bottom: 8px; }
+  .area-h { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 10px 0 2px; font-weight: 700; }
+  .area-h + .grp { padding-top: 4px; }
   .grp { color: var(--hint); font-size: 12px; font-weight: 600; padding: 10px 0 2px; }
   details.fold { border: 0; }
   details.fold > summary { color: var(--hint); font-size: 13px; padding: 9px 0; }
@@ -186,7 +189,6 @@
     var done = t.status === "done";
     var meta = [];
     meta.push(t.who === state.person ? '<span class="badge mine">ты</span>' : '<span class="badge">' + WHO[t.who] + "</span>");
-    if (t.area) meta.push(esc(t.area));
     if (t.due) meta.push("к " + dueText(t.due));
     if (t.waiting_for && !done) meta.push((t.status === "waiting" ? "ждёт: " : "") + esc(t.waiting_for));
     return '<div class="task' + (done ? " done" : "") + '"><button class="chk' + (done ? " on" : "") + '" data-task="' + esc(t.id) +
@@ -201,6 +203,18 @@
     return '<div class="grp">' + title + "</div>" + body;
   }
 
+  // Подразделы: сначала известные в этом порядке, новые — в конце по алфавиту.
+  var AREA_ORDER = ["Безопасность", "Доступы", "Тренировки", "Бюджет", "Свалка мыслей", "Система", "Приложение", "Запуск"];
+  function areasOf(list) {
+    var seen = {};
+    list.forEach(function (t) { seen[t.area || "Разное"] = true; });
+    return Object.keys(seen).sort(function (a, b) {
+      var ia = AREA_ORDER.indexOf(a), ib = AREA_ORDER.indexOf(b);
+      if (ia < 0) ia = 999; if (ib < 0) ib = 999;
+      return ia !== ib ? ia - ib : a.localeCompare(b, "ru");
+    });
+  }
+
   function renderTasks() {
     var all = state.tasks || [];
     var mineNow = all.filter(function (t) { return t.status === "now" && t.who === state.person; }).length;
@@ -208,10 +222,16 @@
     Object.keys(PROJECT).forEach(function (p) {
       var list = all.filter(function (t) { return t.project === p; });
       if (!list.length) return;
-      var by = function (s) { return list.filter(function (t) { return t.status === s; }).sort(byDue); };
-      html += "<h2>" + PROJECT[p] + '</h2><div class="list">' +
-        taskGroup("Сейчас", by("now"), false) + taskGroup("Ждёт", by("waiting"), false) +
-        taskGroup("Потом", by("later"), true) + taskGroup("Сделано за неделю", by("done"), true) + "</div>";
+      html += "<h2>" + PROJECT[p] + "</h2>";
+      areasOf(list).forEach(function (a) {
+        var inArea = list.filter(function (t) { return (t.area || "Разное") === a; });
+        var by = function (s) { return inArea.filter(function (t) { return t.status === s; }).sort(byDue); };
+        var active = by("now").length + by("waiting").length;
+        html += '<div class="list area"><div class="area-h"><span>' + esc(a) + "</span>" +
+          (active ? '<span class="sub">' + active + " в работе</span>" : "") + "</div>" +
+          taskGroup("Сейчас", by("now"), false) + taskGroup("Ждёт", by("waiting"), false) +
+          taskGroup("Потом", by("later"), true) + taskGroup("Сделано за неделю", by("done"), true) + "</div>";
+      });
     });
     if (!all.length) html += '<div class="list"><div class="row"><span class="n sub">Дел нет</span></div></div>';
     app.innerHTML = html;
